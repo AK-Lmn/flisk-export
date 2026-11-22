@@ -39,7 +39,9 @@ function exportProject(root = fs.mkdtempSync(path.join(os.tmpdir(), "flisk-expor
       port: 4801,
       env: { OPENAI_API_KEY: SECRET },
     }),
-    "services/api/helper/package.json": JSON.stringify({ scripts: { build: "tsc", start: "node index.js" } }),
+    "services/api/helper/package.json": JSON.stringify({
+      scripts: { build: "tsc", start: "node index.js" },
+    }),
     "services/api/edge/service.json": service({
       appName: "edge",
       appType: "mcp",
