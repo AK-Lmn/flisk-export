@@ -39,7 +39,7 @@ function exportProject(root = fs.mkdtempSync(path.join(os.tmpdir(), "flisk-expor
       port: 4801,
       env: { OPENAI_API_KEY: SECRET },
     }),
-    "services/api/helper/package.json": JSON.stringify({ scripts: { build: "tsc" } }),
+    "services/api/helper/package.json": JSON.stringify({ scripts: { build: "tsc", start: "node index.js" } }),
     "services/api/edge/service.json": service({
       appName: "edge",
       appType: "mcp",
@@ -47,6 +47,7 @@ function exportProject(root = fs.mkdtempSync(path.join(os.tmpdir(), "flisk-expor
     }),
     "services/api/edge/package.json": JSON.stringify({
       main: "./src/worker.ts",
+      scripts: { start: "node worker.js" },
       devDependencies: { wrangler: "^4.0.0" },
     }),
     "services/api/edge/src/worker.ts": "export default {};\n",
@@ -257,6 +258,60 @@ describe("flisk-export render", () => {
     expect(result.stderr).toContain("MY-KEY");
     expect(result.stdout).toContain("- key: GOOD");
     expect(result.stdout + result.stderr).not.toContain(SECRET);
+  });
+
+  it("exports frontend without start script as static site with dist publish path", async () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), "flisk-export-static-"));
+    writeFiles(root, {
+      ".flisk/project.json": "{}",
+      "apps/web/service.json": service({
+        appName: "web",
+        appType: "frontend",
+        port: 5173,
+        healthCheckPath: "/health",
+        env: { VITE_API_URL: "https://api.example.com" },
+      }),
+      "apps/web/package.json": JSON.stringify({
+        scripts: { build: "vite build" },
+      }),
+    });
+    const result = await run(["render"], root);
+    expect(result.status).toBe(0);
+    const yaml = fs.readFileSync(path.join(root, "render.yaml"), "utf-8");
+    expect(yaml).toContain(
+      [
+        "services:",
+        "  - type: web",
+        '    name: "web"',
+        "    runtime: static",
+        '    rootDir: "apps/web"',
+        '    buildCommand: "npm install && npm run build"',
+        '    staticPublishPath: "dist"',
+        "    envVars:",
+        "      - key: VITE_API_URL",
+        "        sync: false",
+      ].join("\n"),
+    );
+    expect(yaml).not.toContain("healthCheckPath");
+    expect(yaml).not.toContain("PORT");
+  });
+
+  it("throws ExportError when non-frontend service has no start script", async () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), "flisk-export-nostart-"));
+    writeFiles(root, {
+      ".flisk/project.json": "{}",
+      "services/api/service.json": service({
+        appName: "api",
+        appType: "backend",
+        port: 3000,
+      }),
+      "services/api/package.json": JSON.stringify({
+        scripts: { build: "tsc" },
+      }),
+    });
+    const result = await run(["render"], root);
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain('Resource "api" has no start script');
   });
 });
 
